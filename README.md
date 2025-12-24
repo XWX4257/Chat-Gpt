@@ -12,6 +12,18 @@ A Python tool to retrieve restaurant information from Naver Maps and Naver Place
 
 ## Installation
 
+### Option 1: Google Colab (No Installation Required!) ⭐
+
+The easiest way to use this scraper is with Google Colab:
+
+1. **Upload Notebook**: Go to [Google Colab](https://colab.research.google.com/) and upload `naver_restaurant_scraper_colab.ipynb`
+2. **Or Copy-Paste**: Copy the content from `colab_single_cell.py` into a Colab cell
+3. **Run**: Execute the cells and get results instantly!
+
+📖 See [COLAB_USAGE.md](COLAB_USAGE.md) for detailed Colab instructions.
+
+### Option 2: Local Installation
+
 1. Clone this repository
 2. Install dependencies:
 
@@ -20,6 +32,21 @@ pip install -r requirements.txt
 ```
 
 ## Usage
+
+### Google Colab (Recommended for Beginners)
+
+```python
+# In Google Colab, just run this in a single cell:
+!pip install requests -q
+
+# Then copy the scraper code and use it:
+restaurant_name = "Namaste Wangsimni Branch"
+scraper = NaverRestaurantScraper()
+data = scraper.search_restaurant(restaurant_name)
+scraper.display_results_colab(data)
+```
+
+See [COLAB_USAGE.md](COLAB_USAGE.md) for complete examples.
 
 ### Command Line
 
