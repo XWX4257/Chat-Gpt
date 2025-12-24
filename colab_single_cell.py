@@ -49,7 +49,7 @@ class NaverRestaurantScraper:
     def _search_for_place_id(self, restaurant_name: str) -> Optional[str]:
         """Search Naver Maps for a restaurant and extract its place ID."""
         try:
-            # Search using Naver Maps search API
+            # Method 1: Try Naver Maps search API
             api_search_url = "https://map.naver.com/v5/api/search"
             params = {
                 'caller': 'pcweb',
@@ -60,30 +60,72 @@ class NaverRestaurantScraper:
                 'isPlaceRecommendationReplace': 'true'
             }
 
-            response = self.session.get(api_search_url, params=params, timeout=10)
+            response = self.session.get(api_search_url, params=params, timeout=15)
 
             if response.status_code == 200:
-                data = response.json()
-                if 'result' in data and 'place' in data['result']:
-                    places = data['result']['place'].get('list', [])
-                    if places:
-                        return places[0].get('id')
+                try:
+                    data = response.json()
+                    if 'result' in data and 'place' in data['result']:
+                        places = data['result']['place'].get('list', [])
+                        if places and len(places) > 0:
+                            place_id = places[0].get('id')
+                            if place_id:
+                                return str(place_id)
+                except:
+                    pass
 
-            # Fallback: Try to parse from the main search page
+            # Method 2: Try direct search page
             search_url = f"https://map.naver.com/v5/search/{quote(restaurant_name)}"
-            response = self.session.get(search_url, timeout=10)
+            response = self.session.get(search_url, timeout=15)
+
             if response.status_code == 200:
-                place_id_match = re.search(r'"id"\s*:\s*"(\d+)"', response.text)
-                if place_id_match:
-                    return place_id_match.group(1)
-                place_id_match = re.search(r'/place/(\d+)', response.text)
-                if place_id_match:
-                    return place_id_match.group(1)
+                text = response.text
+
+                # Try multiple patterns
+                patterns = [
+                    r'"id"\s*:\s*"(\d+)"',
+                    r'"placeId"\s*:\s*"(\d+)"',
+                    r'/place/(\d+)',
+                    r'place\?id=(\d+)',
+                    r'"id":"(\d+)"',
+                    r'id=(\d+)',
+                    r'placeId=(\d+)',
+                ]
+
+                for pattern in patterns:
+                    match = re.search(pattern, text)
+                    if match:
+                        place_id = match.group(1)
+                        if place_id.isdigit() and 5 <= len(place_id) <= 20:
+                            return place_id
+
+            # Method 3: Try alternative API endpoint
+            alt_api_url = "https://map.naver.com/p/api/search/allSearch"
+            alt_params = {
+                'query': restaurant_name,
+                'type': 'place'
+            }
+
+            response = self.session.get(alt_api_url, params=alt_params, timeout=15)
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    if 'result' in data and 'place' in data['result']:
+                        if 'list' in data['result']['place']:
+                            places = data['result']['place']['list']
+                            if places and len(places) > 0:
+                                place_id = places[0].get('id') or places[0].get('placeId')
+                                if place_id:
+                                    return str(place_id)
+                except:
+                    pass
 
             return None
 
         except Exception as e:
             print(f"⚠️ Error searching for place ID: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _get_restaurant_data(self, place_id: str, restaurant_name: str) -> Dict[str, Any]:
