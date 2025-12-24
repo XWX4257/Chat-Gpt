@@ -411,6 +411,71 @@ def extract_review_keywords_robust(driver, debug=True):
 
     return keywords
 
+def get_ai_briefing_from_naver_maps(driver, place_id, debug=True):
+    """
+    Try to extract AI briefing from Naver Maps (as opposed to Naver Place).
+    Some restaurants have AI briefing only on Maps, not on Place.
+    """
+    if debug: print("   [DEBUG] Checking Naver Maps for AI briefing...")
+
+    try:
+        # Try Naver Maps mobile URL
+        maps_url = f"https://m.map.naver.com/search2/site.naver?query=&type=SITE_1&id={place_id}"
+        driver.get(maps_url)
+        time.sleep(3)
+
+        # Scroll to load content
+        driver.execute_script("window.scrollTo(0, 800);")
+        time.sleep(1)
+
+        body_text = driver.find_element(By.TAG_NAME, "body").text
+
+        if 'AI 브리핑' in body_text or 'AI브리핑' in body_text:
+            if debug: print("   [DEBUG] Found AI briefing on Naver Maps!")
+            lines = body_text.split('\n')
+            start = -1
+
+            for i, line in enumerate(lines):
+                if 'AI 브리핑' in line or 'AI브리핑' in line:
+                    start = i
+                    break
+
+            if start != -1:
+                raw_ai = "\n".join(lines[start:min(start+40, len(lines))])
+                cleaned = clean_ai_briefing(raw_ai)
+                if cleaned:
+                    return cleaned
+
+        # Try alternative Maps URL structure
+        maps_url_alt = f"https://map.naver.com/p/search/{place_id}"
+        driver.get(maps_url_alt)
+        time.sleep(3)
+        driver.execute_script("window.scrollTo(0, 800);")
+        time.sleep(1)
+
+        body_text = driver.find_element(By.TAG_NAME, "body").text
+
+        if 'AI 브리핑' in body_text or 'AI브리핑' in body_text:
+            if debug: print("   [DEBUG] Found AI briefing on alternative Maps URL!")
+            lines = body_text.split('\n')
+            start = -1
+
+            for i, line in enumerate(lines):
+                if 'AI 브리핑' in line or 'AI브리핑' in line:
+                    start = i
+                    break
+
+            if start != -1:
+                raw_ai = "\n".join(lines[start:min(start+40, len(lines))])
+                cleaned = clean_ai_briefing(raw_ai)
+                if cleaned:
+                    return cleaned
+
+    except Exception as e:
+        if debug: print(f"   [DEBUG] Error getting AI briefing from Maps: {e}")
+
+    return ""
+
 def get_full_restaurant_data(search_query, debug=True):
     driver = setup_driver()
     results = {}
@@ -446,10 +511,15 @@ def get_full_restaurant_data(search_query, debug=True):
         except: pass
 
         # --- AI Briefing ---
+        # Try to get AI briefing from both Naver Place and Naver Maps
+        results['ai_briefing'] = ""
+        ai_source = ""
+
+        # First, try Naver Place (current page)
         try:
             body_text = driver.find_element(By.TAG_NAME, "body").text
-            results['ai_briefing'] = ""
             if 'AI 브리핑' in body_text:
+                if debug: print("   [DEBUG] Found AI briefing on Naver Place")
                 lines = body_text.split('\n')
                 start = -1
                 for i, line in enumerate(lines):
@@ -457,7 +527,25 @@ def get_full_restaurant_data(search_query, debug=True):
                 if start != -1:
                     raw_ai = "\n".join(lines[start:min(start+40, len(lines))])
                     results['ai_briefing'] = clean_ai_briefing(raw_ai)
+                    if results['ai_briefing']:
+                        ai_source = "Naver Place"
         except: pass
+
+        # If not found on Place, try Naver Maps
+        if not results['ai_briefing']:
+            if debug: print("   [DEBUG] AI briefing not found on Place, checking Maps...")
+            maps_briefing = get_ai_briefing_from_naver_maps(driver, place_id, debug=debug)
+            if maps_briefing:
+                results['ai_briefing'] = maps_briefing
+                ai_source = "Naver Maps"
+
+        if results['ai_briefing'] and debug:
+            print(f"   ✓ AI briefing found on {ai_source}")
+        elif debug:
+            print("   ⚠ No AI briefing found on either Place or Maps")
+
+        # Store the source for display
+        results['ai_source'] = ai_source if ai_source else None
 
         # 3. Go to Review Tab
         review_url = f"https://m.place.naver.com/restaurant/{place_id}/review/visitor"
@@ -521,9 +609,10 @@ if __name__ == "__main__":
 
         print("\n🤖 AI Briefing:")
         if data['ai_briefing']:
-            print("-" * 40)
+            source_label = f" (Source: {data.get('ai_source', 'Unknown')})" if data.get('ai_source') else ""
+            print(f"{'─' * 40}{source_label}")
             print(data['ai_briefing'])
-            print("-" * 40)
+            print("─" * 40)
         else:
-            print("   (Not available)")
+            print("   (Not available on either Naver Place or Naver Maps)")
         print("="*60)
