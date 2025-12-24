@@ -109,18 +109,35 @@ def extract_review_keywords_robust(driver, debug=True):
     print("   ...Extracting ALL 'Good Points' (이런 점이 좋았어요)")
 
     try:
-        # 1. Scroll to section - try multiple methods
+        # 1. Scroll to section - more aggressive
+        scrolled = False
         try:
             # Method 1: Find by exact text
             header = driver.find_element(By.XPATH, "//*[contains(text(), '이런 점이 좋았어요')]")
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", header)
-            time.sleep(1.5)
+            time.sleep(2)
             if debug: print("   [DEBUG] Found and scrolled to '이런 점이 좋았어요' header")
+            scrolled = True
         except:
-            # Method 2: Scroll to a reasonable position
-            driver.execute_script("window.scrollTo(0, 600);")
-            time.sleep(1)
-            if debug: print("   [DEBUG] Scrolled to position 600")
+            pass
+
+        # Try multiple scroll positions to ensure keywords are visible
+        if not scrolled:
+            for scroll_pos in [400, 800, 1200, 1600, 2000]:
+                driver.execute_script(f"window.scrollTo(0, {scroll_pos});")
+                time.sleep(1)
+                # Check if we can see the header now
+                try:
+                    driver.find_element(By.XPATH, "//*[contains(text(), '이런 점이 좋았어요')]")
+                    if debug: print(f"   [DEBUG] Found header at scroll position {scroll_pos}")
+                    time.sleep(1)
+                    scrolled = True
+                    break
+                except:
+                    continue
+
+        if not scrolled and debug:
+            print("   [DEBUG] Could not find '이런 점이 좋았어요' header, scrolled through page")
 
         # 2. Expand the list multiple times
         max_clicks = 20
@@ -165,13 +182,14 @@ def extract_review_keywords_robust(driver, debug=True):
         # 3. STRATEGY 1: Try to find elements directly with Selenium first
         if debug: print("   [DEBUG] Trying Strategy 1: Direct Selenium search...")
         try:
-            # Look for list items in the keyword section
-            # Common class patterns for Naver Place keywords
+            # First, try to find specific keyword list items that have both text and numbers
+            # Look for LI elements that contain Korean endings and numbers
             keyword_selectors = [
-                "//li[contains(@class, 'pui__')]//span",
+                "//li[contains(., '어요') and contains(., '이 키워드를 선택한 인원')]",
+                "//li[contains(., '해요') and contains(., '이 키워드를 선택한 인원')]",
+                "//li[contains(@class, 'pui__') and (contains(., '어요') or contains(., '해요'))]",
                 "//ul[contains(@class, 'pui__')]//li",
-                "//div[contains(@class, 'place_section_content')]//li",
-                "//li[.//span[contains(text(), '어요')] or .//span[contains(text(), '해요')]]"
+                "//div[contains(@class, 'place_section_content')]//li"
             ]
 
             for selector in keyword_selectors:
@@ -185,21 +203,40 @@ def extract_review_keywords_robust(driver, debug=True):
                             if not text or len(text) < 3:
                                 continue
 
+                            # Skip navigation items
+                            if text in ["업체", "클립", "내부", "외부", "홈", "메뉴", "리뷰"]:
+                                continue
+
                             # Try to parse "keyword + number" pattern
                             lines = text.split('\n')
                             for line in lines:
+                                line = line.strip()
+                                # Skip aria-label text
+                                if '이 키워드를 선택한 인원' in line:
+                                    # Extract from aria-label pattern: "keyword 이 키워드를 선택한 인원 number명"
+                                    match = re.search(r'(.+?)\s*이 키워드를 선택한 인원\s*(\d+(?:,\d+)*)', line)
+                                    if match:
+                                        phrase = match.group(1).strip()
+                                        count = extract_number(match.group(2))
+                                        if count > 0 and 3 < len(phrase) < 60:
+                                            if phrase not in keywords:
+                                                keywords[phrase] = count
+                                                if debug: print(f"   [DEBUG] Found keyword: {phrase} = {count}")
+                                    continue
+
                                 # Pattern: "음식이 맛있어요 1,490" or split into parts
-                                parts = line.strip().split()
+                                parts = line.split()
                                 if len(parts) >= 2:
                                     # Check if last part is a number
                                     if re.match(r'^[\d,]+$', parts[-1]):
                                         count = extract_number(parts[-1])
                                         phrase = ' '.join(parts[:-1]).strip()
 
-                                        if count > 0 and 2 < len(phrase) < 60:
+                                        if count > 0 and 3 < len(phrase) < 60:
                                             phrase = phrase.replace('"', '').replace("'", "").strip()
                                             if phrase not in keywords:
                                                 keywords[phrase] = count
+                                                if debug: print(f"   [DEBUG] Found keyword: {phrase} = {count}")
 
                         if keywords:
                             break  # Found keywords, exit loop
@@ -219,41 +256,67 @@ def extract_review_keywords_robust(driver, debug=True):
             keyword_section = None
 
             # Look for section containing the header
-            headers = soup.find_all(text=re.compile(r'이런 점이 좋았어요'))
+            headers = soup.find_all(string=re.compile(r'이런 점이 좋았어요'))
             if headers and debug:
                 print(f"   [DEBUG] Found {len(headers)} headers matching '이런 점이 좋았어요'")
 
+            # Try to find UL containers near the header
+            potential_sections = []
             for header in headers:
-                # Get parent containers
                 parent = header.find_parent()
-                for _ in range(5):  # Go up 5 levels max
+                for level in range(10):  # Go up 10 levels max
                     if parent:
-                        # Look for ul or list container
-                        ul = parent.find('ul')
-                        if ul:
-                            keyword_section = ul
-                            if debug: print("   [DEBUG] Found UL container in section")
-                            break
+                        # Find all UL elements in this parent
+                        uls = parent.find_all('ul')
+                        for ul in uls:
+                            if ul not in potential_sections:
+                                potential_sections.append(ul)
                         parent = parent.find_parent()
-                if keyword_section:
+
+            if debug and potential_sections:
+                print(f"   [DEBUG] Found {len(potential_sections)} potential UL sections")
+
+            # Validate each section to find the one with actual keywords
+            for ul_section in potential_sections:
+                li_elements = ul_section.find_all('li')
+
+                # Quick validation: check if this UL has keyword-like items
+                has_numbers = False
+                has_korean_endings = False
+
+                sample_text = ' '.join([li.get_text() for li in li_elements[:5]])
+                if re.search(r'\d{2,}', sample_text):  # Has numbers with 2+ digits
+                    has_numbers = True
+                if re.search(r'[어해]요', sample_text):  # Has Korean verb endings
+                    has_korean_endings = True
+
+                if has_numbers and has_korean_endings:
+                    keyword_section = ul_section
+                    if debug:
+                        print(f"   [DEBUG] Found valid keyword UL with {len(li_elements)} LI elements")
                     break
 
             # If we found the section, parse it
             if keyword_section:
                 li_elements = keyword_section.find_all('li')
-                if debug: print(f"   [DEBUG] Found {len(li_elements)} LI elements in keyword section")
 
                 for li in li_elements:
                     # Get all text parts separately
                     parts = [s.strip() for s in li.stripped_strings if s.strip()]
 
-                    if debug and len(parts) > 0:
+                    if not parts:
+                        continue
+
+                    # Only show debug for items that look promising (have multiple parts)
+                    if debug and len(parts) >= 2:
                         print(f"   [DEBUG] LI parts: {parts}")
 
                     # Filter out label text
                     clean_parts = []
                     for part in parts:
-                        if "이 키워드를 선택한 인원" in part or "명" in part and len(part) < 5:
+                        if "이 키워드를 선택한 인원" in part:
+                            continue
+                        if part == "명" and len(part) < 3:
                             continue
                         clean_parts.append(part)
 
@@ -278,7 +341,8 @@ def extract_review_keywords_robust(driver, debug=True):
 
                             # Filter navigation items
                             ignore_list = ["홈", "메뉴", "리뷰", "사진", "지도", "주변", "예약", "주문",
-                                         "방문자 리뷰", "블로그 리뷰", "영수증", "이런 점이 좋았어요"]
+                                         "방문자 리뷰", "블로그 리뷰", "영수증", "이런 점이 좋았어요",
+                                         "업체", "클립", "내부", "외부", "동영상", "방문자", "블로그"]
 
                             if phrase not in ignore_list and 2 < len(phrase) < 60:
                                 keywords[phrase] = count
