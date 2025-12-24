@@ -2,6 +2,25 @@
 
 A Python tool to retrieve restaurant information from Naver Maps and Naver Place, including reviews, ratings, and AI-generated briefings.
 
+## 🚀 Two Versions Available
+
+### ⭐ Selenium Version (RECOMMENDED)
+**Use this for Korean restaurants and production use!**
+
+- ✅ Handles JavaScript (Naver's dynamic content)
+- ✅ Works with Korean names like "디핀옥수"
+- ✅ More reliable data extraction
+- ✅ Works perfectly in Google Colab
+- 📖 See [SELENIUM_VERSION_README.md](SELENIUM_VERSION_README.md)
+
+### ⚡ Requests Version (Fast but Limited)
+**Good for quick tests with English names**
+
+- ⚡ Fast (2-3 seconds)
+- ⚠️ May fail with Korean names
+- ⚠️ Cannot handle JavaScript-loaded content
+- 📖 See [COLAB_USAGE.md](COLAB_USAGE.md)
+
 ## Features
 
 - **Restaurant Search**: Find restaurants on Naver Maps by name
@@ -10,43 +29,92 @@ A Python tool to retrieve restaurant information from Naver Maps and Naver Place
 - **Ratings**: Get Naver rating scores (when available)
 - **AI Briefing**: Extract AI-generated briefing content from Naver Place or Naver Maps
 
+## Quick Start (Google Colab - Selenium Version)
+
+### Option 1: Copy & Paste (Easiest!) ⭐
+
+1. Open [Google Colab](https://colab.research.google.com/)
+2. Create a new notebook
+3. Copy the entire content from `colab_selenium_complete.py`
+4. Paste into a cell and run
+5. Change restaurant name and run again!
+
+**File to use**: `colab_selenium_complete.py`
+
+### Option 2: Requests Version (Faster but Less Reliable)
+
+1. Open [Google Colab](https://colab.research.google.com/)
+2. Copy content from `colab_single_cell.py`
+3. Paste and run
+
+**File to use**: `colab_single_cell.py`
+
+📖 For detailed instructions, see:
+- **Selenium Version**: [SELENIUM_VERSION_README.md](SELENIUM_VERSION_README.md)
+- **Requests Version**: [COLAB_USAGE.md](COLAB_USAGE.md)
+
 ## Installation
 
-### Option 1: Google Colab (No Installation Required!) ⭐
+### Google Colab - Selenium Version (Recommended)
 
-The easiest way to use this scraper is with Google Colab:
+```python
+# This is all handled automatically in colab_selenium_complete.py
+# Just copy and paste that entire file!
+```
 
-1. **Upload Notebook**: Go to [Google Colab](https://colab.research.google.com/) and upload `naver_restaurant_scraper_colab.ipynb`
-2. **Or Copy-Paste**: Copy the content from `colab_single_cell.py` into a Colab cell
-3. **Run**: Execute the cells and get results instantly!
+### Google Colab - Requests Version
 
-📖 See [COLAB_USAGE.md](COLAB_USAGE.md) for detailed Colab instructions.
+```python
+!pip install requests -q
+# Then use colab_single_cell.py
+```
 
-### Option 2: Local Installation
+### Local Installation - Selenium Version
 
-1. Clone this repository
-2. Install dependencies:
+```bash
+# Install Chrome browser first
+# Then:
+pip install selenium webdriver-manager
+```
+
+### Local Installation - Requests Version
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+## Usage Examples
 
-### Google Colab (Recommended for Beginners)
+### Selenium Version (Recommended for Korean Names)
 
 ```python
-# In Google Colab, just run this in a single cell:
-!pip install requests -q
+# In Google Colab - use colab_selenium_complete.py
+# It handles everything automatically!
 
-# Then copy the scraper code and use it:
-restaurant_name = "Namaste Wangsimni Branch"
-scraper = NaverRestaurantScraper()
-data = scraper.search_restaurant(restaurant_name)
-scraper.display_results_colab(data)
+# Or manually:
+from naver_restaurant_scraper_selenium import NaverRestaurantScraperSelenium
+
+scraper = NaverRestaurantScraperSelenium()
+data = scraper.search_restaurant("디핀옥수")  # Works with Korean!
+
+if data:
+    print(f"Place ID: {data['place_id']}")
+    print(f"Visitor Reviews: {data['visitor_reviews']}")
+    print(f"Blog Reviews: {data['blog_reviews']}")
+    print(f"Rating: {data['naver_rating']}")
 ```
 
-See [COLAB_USAGE.md](COLAB_USAGE.md) for complete examples.
+### Requests Version (Fast but Limited)
+
+```python
+# Use colab_single_cell.py for Google Colab
+# Or locally:
+from naver_restaurant_scraper import NaverRestaurantScraper
+
+scraper = NaverRestaurantScraper()
+data = scraper.search_restaurant("Namaste Wangsimni Branch")
+scraper.display_results(data)
+```
 
 ### Command Line
 
